@@ -1,0 +1,27 @@
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
+import Login from './components/Login';
+import DonorDashboard from './pages/DonorDashboard';
+import RecipientDashboard from './pages/RecipientDashboard';
+import HospitalDashboard from './pages/HospitalDashboard';
+import './index.css';
+
+function App() {
+  return (
+    <Router>
+      <div className="app">
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/donor-dashboard" element={<DonorDashboard />} />
+          <Route path="/recipient-dashboard" element={<RecipientDashboard />} />
+          <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </div>
+    </Router>
+  );
+}
+
+export default App;
