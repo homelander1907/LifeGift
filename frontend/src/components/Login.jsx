@@ -31,8 +31,10 @@ const Login = () => {
       
       localStorage.setItem('token', token);
       localStorage.setItem('role', userRole);
+      localStorage.setItem('name', res.data.name);
 
       // Redirect based on role
+
       if (userRole === 'donor') navigate('/donor-dashboard');
       else if (userRole === 'recipient') navigate('/recipient-dashboard');
       else if (userRole === 'hospital') navigate('/hospital-dashboard');

@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/auth.js';
+import donorRoutes from './routes/donor.js';
 
 dotenv.config();
 
@@ -21,6 +22,8 @@ mongoose.connect(MONGO_URI)
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/donor', donorRoutes);
+
 
 // Basic route to check if API is running
 app.get('/api/status', (req, res) => {

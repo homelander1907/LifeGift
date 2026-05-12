@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LandingPage from './pages/LandingPage';
 import Login from './components/Login';
 import DonorDashboard from './pages/DonorDashboard';
+import DonorOnboarding from './pages/DonorOnboarding';
 import RecipientDashboard from './pages/RecipientDashboard';
 import HospitalDashboard from './pages/HospitalDashboard';
 import './index.css';
@@ -15,6 +16,7 @@ function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/donor-dashboard" element={<DonorDashboard />} />
+          <Route path="/donor-onboarding" element={<DonorOnboarding />} />
           <Route path="/recipient-dashboard" element={<RecipientDashboard />} />
           <Route path="/hospital-dashboard" element={<HospitalDashboard />} />
           <Route path="*" element={<Navigate to="/" />} />
@@ -23,5 +25,6 @@ function App() {
     </Router>
   );
 }
+
 
 export default App;

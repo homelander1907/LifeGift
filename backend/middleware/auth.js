@@ -1,10 +1,9 @@
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_development';
 
-const auth = async (req, res, next) => {
-  const token = req.header('x-auth-token');
+const authMiddleware = (req, res, next) => {
+  const token = req.header('Authorization')?.replace('Bearer ', '');
 
   if (!token) {
     return res.status(401).json({ message: 'No token, authorization denied' });
@@ -19,4 +18,4 @@ const auth = async (req, res, next) => {
   }
 };
 
-export default auth;
+export default authMiddleware;
