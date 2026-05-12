@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -89,6 +90,38 @@ router.post('/login', async (req, res) => {
         res.json({ token, role: user.role, name: user.name });
       }
     );
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// Get Profile Route
+router.get('/profile', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// Update Profile Route
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { age, bloodType, phone, address, location } = req.body;
+
+    const updateFields = {};
+    if (age !== undefined) updateFields.age = age;
+    if (bloodType) updateFields.bloodType = bloodType;
+    if (phone) updateFields.phone = phone;
+    if (address) updateFields.address = address;
+    if (location) updateFields.location = location;
+
+    const user = await User.findByIdAndUpdate(req.user.id, updateFields, { new: true });
+
+    res.json(user);
   } catch (err) {
     console.error(err.message);
     res.status(500).send('Server error');

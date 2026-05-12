@@ -20,6 +20,23 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  age: {
+    type: Number,
+  },
+  bloodType: {
+    type: String,
+    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+  },
+  phone: {
+    type: String,
+  },
+  address: {
+    type: String,
+  },
+  location: {
+    lat: Number,
+    lng: Number,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
