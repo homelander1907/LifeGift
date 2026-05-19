@@ -1,102 +1,59 @@
 import express from 'express';
 import authMiddleware from '../middleware/auth.js';
-import DonorProfile from '../models/DonorProfile.js';
-import User from '../models/User.js';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import RecipientProfile from '../models/RecipientProfile.js';
+import SosRequest from '../models/SosRequest.js';
 import Appointment from '../models/Appointment.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const router = express.Router();
 
-// Initialize Gemini (Will be instantiated dynamically in the route to ensure env vars are loaded)
-
 /**
- * POST /api/donor/profile
- * Save or update donor profile details
+ * POST /api/recipient/onboard
  */
-router.post('/profile', authMiddleware, async (req, res) => {
+router.post('/onboard', authMiddleware, async (req, res) => {
   try {
-    const {
-      fullName,
-      age,
-      bloodType,
-      gender,
-      weight,
-      lastDonationDate,
-      medicalHistory,
-      location,
-      address,
-      vitals,
-      remindMe
-    } = req.body;
+    const { fullName, age, bloodType, gender, medicalCondition, urgencyLevel, coordinates, address } = req.body;
 
-    const updateData = {
-      fullName,
-      age,
-      bloodType,
-      gender,
-      weight,
-      lastDonationDate,
-      medicalHistory,
-      address,
-      remindMe
-    };
-
-    // Handle GeoJSON Location
-    if (location && location.coordinates) {
-      updateData.location = {
-        type: 'Point',
-        coordinates: location.coordinates
-      };
-    }
-
-    let profile = await DonorProfile.findOne({ userId: req.user.id });
-
+    let profile = await RecipientProfile.findOne({ userId: req.user.id });
     if (profile) {
-      // Update existing profile
-      const updateQuery = { $set: updateData };
-      if (vitals) {
-        updateQuery.$push = { vitalsHistory: vitals };
-      }
-      
-      profile = await DonorProfile.findOneAndUpdate(
-        { userId: req.user.id },
-        updateQuery,
-        { new: true }
-      );
-    } else {
-      // Create new profile
-      const newProfileData = {
-        userId: req.user.id,
-        ...updateData
-      };
-      if (vitals) {
-        newProfileData.vitalsHistory = [vitals];
-      }
-      profile = new DonorProfile(newProfileData);
-      await profile.save();
+      return res.status(400).json({ message: 'Recipient profile already exists.' });
     }
 
-    res.json({ message: 'Profile updated successfully', profile });
+    profile = new RecipientProfile({
+      userId: req.user.id,
+      fullName,
+      age,
+      bloodType,
+      gender,
+      medicalCondition,
+      urgencyLevel: urgencyLevel || 'Routine',
+      location: {
+        type: 'Point',
+        coordinates
+      },
+      address
+    });
+
+    await profile.save();
+    res.status(201).json({ message: 'Onboarding successful', profile });
   } catch (err) {
-    console.error('Update Profile Error:', err);
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error('Recipient Onboarding Error:', err);
+    res.status(500).json({ message: 'Failed to complete onboarding' });
   }
 });
 
 /**
- * GET /api/donor/profile
- * Get current donor profile
+ * GET /api/recipient/profile
  */
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
-    const profile = await DonorProfile.findOne({ userId: req.user.id });
+    const profile = await RecipientProfile.findOne({ userId: req.user.id });
     if (!profile) {
       return res.status(404).json({ message: 'Profile not found', needsOnboarding: true });
     }
     res.json(profile);
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ message: 'Server Error' });
   }
 });
 
@@ -114,7 +71,7 @@ const getDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 /**
- * GET /api/donor/nearby-hospitals
+ * GET /api/recipient/nearby-hospitals
  * Fetch nearby hospitals and nursing homes
  */
 router.get('/nearby-hospitals', authMiddleware, async (req, res) => {
@@ -169,7 +126,7 @@ router.get('/nearby-hospitals', authMiddleware, async (req, res) => {
       } catch (e) { console.error('Google JSON Error'); }
     }
 
-    // Process Overpass Results (Source of volume for these specific types)
+    // Process Overpass Results
     if (overpassRes.status === 'fulfilled' && overpassRes.value.ok) {
       try {
         const oData = await overpassRes.value.json();
@@ -194,8 +151,7 @@ router.get('/nearby-hospitals', authMiddleware, async (req, res) => {
           console.log(`Overpass Elements Found: ${oData.elements.length}`);
         }
       } catch (e) { console.error('Overpass JSON Error'); }
-    }
- else {
+    } else {
       console.warn('Overpass API Request Failed');
     }
 
@@ -220,10 +176,8 @@ router.get('/nearby-hospitals', authMiddleware, async (req, res) => {
       .filter(h => h.lat && h.lon)
       .sort((a, b) => a.distance - b.distance);
 
-
     console.log(`Final Merged Results: ${finalResults.length}`);
     res.json(finalResults);
-
 
   } catch (err) {
     console.error('Hospital Discovery Error:', err);
@@ -231,35 +185,55 @@ router.get('/nearby-hospitals', authMiddleware, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/recipient/sos
+ * Creates an SOS Request
+ */
+router.post('/sos', authMiddleware, async (req, res) => {
+  try {
+    const profile = await RecipientProfile.findOne({ userId: req.user.id });
+    if (!profile) return res.status(404).json({ message: 'Profile not found' });
 
+    const sos = new SosRequest({
+      recipientId: req.user.id,
+      bloodType: profile.bloodType,
+      urgency: 'Emergency',
+      location: profile.location,
+      address: profile.address
+    });
+    
+    await sos.save();
+    res.json({ message: 'SOS Request successfully broadcasted to nearby donors and hospital admin.', sos });
+  } catch (err) {
+    console.error('SOS Error:', err);
+    res.status(500).json({ message: 'Failed to send SOS' });
+  }
+});
 
 /**
- * POST /api/donor/ai-chat
- * Interact with Gemini for health screening
+ * POST /api/recipient/ai-chat
  */
 router.post('/ai-chat', authMiddleware, async (req, res) => {
   try {
-    const { messages, donorData } = req.body;
-    console.log('Gemini Request Received. API Key present:', !!process.env.GEMINI_API_KEY);
+    const { messages, recipientData } = req.body;
     
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ message: 'Gemini API Key is missing on the server.' });
+      return res.status(500).json({ message: 'AI Assistant Error', error: 'Missing Gemini API Key' });
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    
+    const systemInstruction = `You are LifeGift's AI Health Assistant for Blood Recipients. Your goal is to support patients needing blood by answering their questions and guiding them.
+Context about the recipient: Blood Type: ${recipientData?.bloodType || 'Unknown'}, Condition: ${recipientData?.medicalCondition || 'Unknown'}.
+Be highly empathetic, calm, and reassuring. Offer helpful advice about preparing for blood transfusions or managing their condition. Ask ONE question at a time if you need more info. Do not overwhelm the user.`;
 
-    const systemInstruction = `You are LifeGift's AI Health Assistant. Your goal is to screen blood donors for eligibility by asking them dynamic questions, one by one. 
-Context about the donor: Blood Type: ${donorData?.bloodType || 'Unknown'}, Age: ${donorData?.age || 'Unknown'}, Weight: ${donorData?.weight || 'Unknown'}kg.
-Ask questions about recent illnesses, travel history, medications, tattoos, or surgeries. Ask ONE question at a time. Do not overwhelm the user. Wait for their answer.
-Once you have asked 3-4 questions and gathered enough information, provide a final eligibility assessment report.`;
-
-    // Format history for Gemini (user/model alternation, first must be user)
+    // Format history (first message must be 'user')
     let formattedHistory = [];
     const historyMessages = messages.slice(0, -1);
     for (const msg of historyMessages) {
       const role = msg.role === 'model' ? 'model' : 'user';
       if (formattedHistory.length === 0 && role === 'model') {
-        formattedHistory.push({ role: 'user', parts: [{ text: 'Hi' }] });
+        formattedHistory.push({ role: 'user', parts: [{ text: "Hello AI." }] });
       }
       formattedHistory.push({ role, parts: [{ text: msg.content }] });
     }
@@ -277,23 +251,19 @@ Once you have asked 3-4 questions and gathered enough information, provide a fin
     let lastError = null;
     for (const modelName of MODEL_PRIORITY) {
       try {
-        console.log(`Trying model: ${modelName}`);
+        console.log(`[Recipient AI] Trying model: ${modelName}`);
         const customModel = genAI.getGenerativeModel({
           model: modelName,
           systemInstruction: systemInstruction
         });
-        const chat = customModel.startChat({
-          history: formattedHistory,
-          generationConfig: { maxOutputTokens: 500 },
-        });
-        const result = await chat.sendMessage([{ text: prompt }]);
+        const chat = customModel.startChat({ history: formattedHistory });
+        const result = await chat.sendMessage(prompt);
         const response = await result.response;
-        console.log(`Success with model: ${modelName}`);
+        console.log(`[Recipient AI] Success with model: ${modelName}`);
         return res.json({ content: response.text() });
       } catch (err) {
-        console.warn(`Model ${modelName} failed: ${err.message?.slice(0, 80)}`);
+        console.warn(`[Recipient AI] Model ${modelName} failed: ${err.message?.slice(0, 80)}`);
         lastError = err;
-        // Only retry on quota errors (429), not auth/other errors
         if (!err.message?.includes('429') && !err.message?.includes('quota')) {
           break;
         }
@@ -307,63 +277,38 @@ Once you have asked 3-4 questions and gathered enough information, provide a fin
   }
 });
 
-
 /**
- * POST /api/donor/save-ai-report
- * Save report generated by Gemini
+ * POST /api/recipient/save-ai-report
  */
 router.post('/save-ai-report', authMiddleware, async (req, res) => {
   try {
     const { title, content } = req.body;
-    const profile = await DonorProfile.findOneAndUpdate(
+    const profile = await RecipientProfile.findOneAndUpdate(
       { userId: req.user.id },
       { $push: { aiReports: { title, content, date: new Date() } } },
       { new: true }
     );
     res.json({ message: 'Report saved successfully', reports: profile.aiReports });
   } catch (err) {
-    console.error('Save Report Error:', err);
     res.status(500).json({ message: 'Failed to save report' });
   }
 });
 
 /**
- * POST /api/donor/upload-prescription
- * Upload PDF prescription to vault
- */
-router.post('/upload-prescription', authMiddleware, async (req, res) => {
-  try {
-    const { name, fileData } = req.body;
-    if (!name || !fileData) {
-      return res.status(400).json({ message: 'File name and data are required.' });
-    }
-    const profile = await DonorProfile.findOneAndUpdate(
-      { userId: req.user.id },
-      { $push: { prescriptions: { name, fileData, date: new Date() } } },
-      { new: true }
-    );
-    res.json({ message: 'Prescription uploaded successfully', prescriptions: profile.prescriptions });
-  } catch (err) {
-    console.error('Upload Prescription Error:', err);
-    res.status(500).json({ message: 'Failed to upload prescription' });
-  }
-});
-
-/**
- * GET /api/donor/appointments
+ * GET /api/recipient/appointments
  */
 router.get('/appointments', authMiddleware, async (req, res) => {
   try {
     const appointments = await Appointment.find({ userId: req.user.id }).sort({ createdAt: -1 });
     res.json(appointments);
   } catch (err) {
-    console.error('Fetch Donor Appointments Error:', err);
+    console.error('Fetch Appointments Error:', err);
     res.status(500).json({ message: 'Failed to fetch appointments' });
   }
 });
 
 /**
- * POST /api/donor/book-appointment
+ * POST /api/recipient/book-appointment
  */
 router.post('/book-appointment', authMiddleware, async (req, res) => {
   try {
@@ -378,14 +323,14 @@ router.post('/book-appointment', authMiddleware, async (req, res) => {
       hospitalName,
       date,
       time,
-      purpose: purpose || 'Donation Visit',
+      purpose: purpose || 'Transfusion Prep',
       id: id || Math.random().toString(36).substring(2, 9).toUpperCase()
     });
 
     await newAppointment.save();
     res.status(201).json({ message: 'Appointment successfully booked', appointment: newAppointment });
   } catch (err) {
-    console.error('Book Donor Appointment Error:', err);
+    console.error('Book Appointment Error:', err);
     res.status(500).json({ message: 'Failed to save appointment' });
   }
 });

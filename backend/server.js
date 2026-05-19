@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import authRoutes from './routes/auth.js';
 import donorRoutes from './routes/donor.js';
+import recipientRoutes from './routes/recipient.js';
+import hospitalRoutes from './routes/hospital.js';
 
 dotenv.config();
 
@@ -13,7 +15,7 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/lifegift';
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Connect to MongoDB
 mongoose.connect(MONGO_URI)
@@ -23,6 +25,8 @@ mongoose.connect(MONGO_URI)
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/donor', donorRoutes);
+app.use('/api/recipient', recipientRoutes);
+app.use('/api/hospital', hospitalRoutes);
 
 
 // Basic route to check if API is running

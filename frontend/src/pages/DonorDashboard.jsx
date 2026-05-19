@@ -11,6 +11,9 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area 
 } from 'recharts';
 import Navbar from '../components/Navbar';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
+
 
 // --- Sub-components ---
 
@@ -165,7 +168,42 @@ const ImpactTimeline = ({ donations }) => {
   );
 };
 
-const HealthDashboard = ({ vitals }) => {
+const HealthDashboard = ({ vitals, prescriptions, onUploadSuccess }) => {
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      alert('Please upload a valid PDF file.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+      setIsUploading(true);
+      try {
+        const res = await axios.post('http://localhost:5000/api/donor/upload-prescription', {
+          name: file.name,
+          fileData: reader.result
+        }, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+        if (onUploadSuccess) onUploadSuccess(res.data.prescriptions);
+      } catch (err) {
+        alert('Failed to upload file.');
+      } finally {
+        setIsUploading(false);
+      }
+    };
+  };
+
+  const handleDownload = (fileData, name) => {
+    const link = document.createElement('a');
+    link.href = fileData;
+    link.download = name;
+    link.click();
+  };
+
   const data = vitals?.length > 0 ? vitals : [
     { name: 'Jan', hemoglobin: 14.5, bp: 120, pulse: 72 },
     { name: 'Feb', hemoglobin: 14.2, bp: 118, pulse: 75 },
@@ -229,7 +267,15 @@ const HealthDashboard = ({ vitals }) => {
       </div>
 
       <div className="mt-8">
-        <h4 className="text-sm font-bold text-white mb-4">Medical Checkup Vault</h4>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-bold text-white">Medical Checkup Vault</h4>
+          <div>
+            <input type="file" id="pdf-upload" accept=".pdf" className="hidden" onChange={handleFileUpload} />
+            <label htmlFor="pdf-upload" className="cursor-pointer text-[10px] font-bold text-white bg-red-500/20 px-3 py-1.5 rounded-lg border border-red-500/30 hover:bg-red-500/40 transition-colors">
+              {isUploading ? 'Uploading...' : '+ Upload PDF'}
+            </label>
+          </div>
+        </div>
         <div className="overflow-hidden border border-white/10 rounded-2xl bg-white/5">
           <table className="w-full text-left text-sm">
             <thead className="bg-white/5 text-gray-400 font-bold uppercase text-[10px] tracking-wider border-b border-white/5">
@@ -240,18 +286,21 @@ const HealthDashboard = ({ vitals }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {[
-                { name: 'Annual Blood Work', date: 'Oct 12, 2023' },
-                { name: 'Pre-Donation Screening', date: 'Jan 24, 2024' },
-              ].map((report, i) => (
+              {prescriptions && prescriptions.length > 0 ? prescriptions.map((report, i) => (
                 <tr key={i} className="hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 font-medium text-white">{report.name}</td>
-                  <td className="px-6 py-4 text-gray-400">{report.date}</td>
+                  <td className="px-6 py-4 font-medium text-white truncate max-w-[150px]">{report.name}</td>
+                  <td className="px-6 py-4 text-gray-400">{new Date(report.date).toLocaleDateString()}</td>
                   <td className="px-6 py-4 text-right">
-                    <button className="text-red-400 font-bold hover:underline">Download</button>
+                    <button onClick={() => handleDownload(report.fileData, report.name)} className="text-red-400 font-bold hover:underline">Download</button>
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan="3" className="px-6 py-8 text-center text-gray-500 text-xs italic">
+                    No medical records uploaded yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -260,12 +309,13 @@ const HealthDashboard = ({ vitals }) => {
   );
 };
 
-const HospitalFinder = ({ profile }) => {
-  const [hospitals, setHospitals] = useState([]);
+const HospitalFinder = ({ profile, hospitals, setHospitals }) => {
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const findHospitals = async () => {
     setLoading(true);
+    setCurrentPage(1);
     try {
       let lat, lon;
       const pos = await new Promise((resolve, reject) => {
@@ -284,14 +334,30 @@ const HospitalFinder = ({ profile }) => {
       setHospitals(res.data);
     } catch (err) {
       console.error(err);
-      if (profile?.location?.coordinates) {
+      // Robust Fallback: Try using profile coordinates if they exist and are not [0,0]
+      if (profile?.location?.coordinates && (profile.location.coordinates[0] !== 0 || profile.location.coordinates[1] !== 0)) {
         const [pLon, pLat] = profile.location.coordinates;
-        const res = await axios.get(`http://localhost:5000/api/donor/nearby-hospitals?lat=${pLat}&lon=${pLon}&radius=20000`, {
+        try {
+          const res = await axios.get(`http://localhost:5000/api/donor/nearby-hospitals?lat=${pLat}&lon=${pLon}&radius=20000`, {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+          });
+          setHospitals(res.data);
+          return;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      
+      // Secondary Fallback: Use standard metropolitan coordinates (New Delhi)
+      const fallbackLat = 28.6139;
+      const fallbackLon = 77.2090;
+      try {
+        const res = await axios.get(`http://localhost:5000/api/donor/nearby-hospitals?lat=${fallbackLat}&lon=${fallbackLon}&radius=20000`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         });
         setHospitals(res.data);
-      } else {
-        alert('Please allow location access to find centers near you.');
+      } catch (fallbackErr) {
+        console.error("All hospital finder attempts failed:", fallbackErr);
       }
     } finally {
       setLoading(false);
@@ -301,6 +367,40 @@ const HospitalFinder = ({ profile }) => {
   useEffect(() => {
     findHospitals();
   }, []);
+
+  const ITEMS_PER_PAGE = 10;
+  const totalPages = Math.ceil(hospitals.length / ITEMS_PER_PAGE);
+
+  const currentHospitals = hospitals.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    const container = document.getElementById('hospital-list-container');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      if (currentPage <= 4) {
+        pages.push(1, 2, 3, 4, 5, '...', totalPages);
+      } else if (currentPage >= totalPages - 3) {
+        pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+    return pages;
+  };
 
   return (
     <div className="bento-item col-span-4 overflow-hidden flex flex-col">
@@ -318,13 +418,13 @@ const HospitalFinder = ({ profile }) => {
         </button>
       </div>
       
-      <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
+      <div id="hospital-list-container" className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-10 gap-3">
             <Clock className="animate-spin text-red-500" size={32} />
             <p className="text-xs font-bold text-gray-400">Authenticating Location...</p>
           </div>
-        ) : hospitals.length > 0 ? hospitals.map((h, i) => (
+        ) : currentHospitals.length > 0 ? currentHospitals.map((h, i) => (
           <div key={i} className="flex flex-col p-4 bg-white/5 rounded-2xl border border-white/10 hover:border-red-500/50 transition-all shadow-sm hover:shadow-md group">
             <div className="flex items-center justify-between">
               <p className="text-sm font-bold text-white truncate w-48 group-hover:text-red-400 transition-colors">{h.name}</p>
@@ -373,15 +473,375 @@ const HospitalFinder = ({ profile }) => {
           </div>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mt-4 pt-3 border-t border-white/5 select-none">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => handlePageChange(currentPage - 1)}
+            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 transition-all cursor-pointer disabled:cursor-not-allowed"
+          >
+            Prev
+          </button>
+          
+          {getPageNumbers().map((page, idx) => (
+            <button
+              key={idx}
+              disabled={page === '...'}
+              onClick={() => typeof page === 'number' && handlePageChange(page)}
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                page === currentPage
+                  ? 'bg-red-500 text-white shadow-md shadow-red-500/20'
+                  : page === '...'
+                    ? 'text-gray-600 bg-transparent'
+                    : 'text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 cursor-pointer'
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => handlePageChange(currentPage + 1)}
+            className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold text-gray-400 bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 transition-all cursor-pointer disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   );
 };
+
+const AppointmentBooking = ({ hospitals }) => {
+  const [selectedHospital, setSelectedHospital] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [purpose, setPurpose] = useState('Whole Blood Donation');
+  const [bookedAppointments, setBookedAppointments] = useState([]);
+
+  useEffect(() => {
+    const fetchAppointments = async () => {
+      try {
+        const res = await axios.get('http://localhost:5000/api/donor/appointments', {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+        setBookedAppointments(res.data);
+      } catch (err) {
+        console.error("Failed to load appointments:", err);
+      }
+    };
+    fetchAppointments();
+  }, []);
+
+  const handleBooking = async (e) => {
+    e.preventDefault();
+    if (!selectedHospital || !date || !time) {
+      alert('Please fill in all the booking details.');
+      return;
+    }
+    try {
+      const res = await axios.post('http://localhost:5000/api/donor/book-appointment', {
+        hospitalName: selectedHospital,
+        date,
+        time,
+        purpose
+      }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      
+      setBookedAppointments([res.data.appointment, ...bookedAppointments]);
+      alert(`Appointment successfully booked at ${selectedHospital}!`);
+      setSelectedHospital('');
+      setDate('');
+      setTime('');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to book appointment. Please try again.');
+    }
+  };
+
+  return (
+    <div id="booking-section" className="bento-item col-span-12 mt-6 border border-white/10 bg-white/5 p-8 rounded-3xl">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="bg-red-500/10 p-3 rounded-2xl text-red-500 border border-red-500/20">
+          <Clock size={24} />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-white font-['Outfit']">Book Blood Donation Appointment</h3>
+          <p className="text-xs text-gray-400">Schedule your visit easily at any verified nearby facility</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Booking Form */}
+        <form onSubmit={handleBooking} className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-gray-400">Select Facility</label>
+            <select 
+              value={selectedHospital}
+              onChange={(e) => setSelectedHospital(e.target.value)}
+              className="w-full border border-white/10 text-white rounded-2xl px-5 py-4 focus:outline-none focus:border-red-500 font-medium"
+              style={{ backgroundColor: '#121a28', color: '#ffffff' }}
+            >
+              <option value="" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>-- Choose Nearby Center --</option>
+              {hospitals.map((h, i) => (
+                <option key={i} value={h.name} style={{ backgroundColor: '#121a28', color: '#ffffff' }}>{h.name} ({h.distance?.toFixed(1)} km away)</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-gray-400">Date</label>
+              <div className="relative flex items-center">
+                <Calendar size={18} className="absolute left-4 text-red-500 pointer-events-none" />
+                <input 
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full border border-white/10 text-white rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:border-red-500 font-medium [color-scheme:dark]"
+                  style={{ backgroundColor: '#121a28', color: '#ffffff' }}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-semibold text-gray-400">Time</label>
+              <div className="relative flex items-center">
+                <Clock size={18} className="absolute left-4 text-red-500 pointer-events-none" />
+                <input 
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full border border-white/10 text-white rounded-2xl pl-12 pr-5 py-4 focus:outline-none focus:border-red-500 font-medium [color-scheme:dark]"
+                  style={{ backgroundColor: '#121a28', color: '#ffffff' }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-gray-400">Type of Donation</label>
+            <select 
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              className="w-full border border-white/10 text-white rounded-2xl px-5 py-4 focus:outline-none focus:border-red-500 font-medium"
+              style={{ backgroundColor: '#121a28', color: '#ffffff' }}
+            >
+              <option value="Whole Blood Donation" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>Whole Blood Donation</option>
+              <option value="Platelet Donation" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>Platelet Donation</option>
+              <option value="Plasma Donation" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>Plasma Donation</option>
+              <option value="General Health Screening" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>General Health Screening</option>
+            </select>
+          </div>
+
+          <button 
+            type="submit" 
+            className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-red-500/20"
+          >
+            Confirm Appointment Booking
+          </button>
+        </form>
+
+        {/* Booked Appointments List */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-bold uppercase tracking-wider text-gray-400">Active Bookings</h4>
+          <div className="border border-white/10 rounded-2xl bg-white/5 max-h-[300px] overflow-y-auto custom-scrollbar p-4 space-y-3">
+            {bookedAppointments.length > 0 ? bookedAppointments.map((app, i) => (
+              <div key={i} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5 hover:border-red-500/30 transition-all">
+                <div>
+                  <p className="text-sm font-bold text-white">{app.hospitalName}</p>
+                  <div className="flex items-center gap-3 mt-1 text-[11px] text-gray-400">
+                    <span className="flex items-center gap-1"><Clock size={10} /> {app.date} @ {app.time}</span>
+                    <span>•</span>
+                    <span>{app.purpose}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="px-2 py-0.5 bg-green-500/10 text-green-400 text-[10px] font-bold rounded-lg border border-green-500/20 uppercase">
+                    {app.status}
+                  </span>
+                  <p className="text-[9px] text-gray-500 mt-1">ID: {app.id}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center py-10 text-xs text-gray-500 italic">
+                No upcoming appointments. Book your appointment today!
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AIAssistant = ({ profile, onReportSaved }) => {
+  const [messages, setMessages] = useState([
+    { role: 'model', content: "Hello! I'm your LifeGift AI assistant. I'm here to help you check your eligibility for your next blood donation. Shall we start with a few health questions?" }
+  ]);
+  const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const newMessages = [...messages, { role: 'user', content: input }];
+    setMessages(newMessages);
+    setInput('');
+    setIsTyping(true);
+
+    try {
+      console.log('Sending message to AI Assistant...');
+      const res = await axios.post('http://localhost:5000/api/donor/ai-chat', {
+        messages: newMessages,
+        donorData: {
+          bloodType: profile?.bloodType || 'Unknown',
+          age: profile?.age || 0,
+          weight: profile?.weight || 0
+        }
+      }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+
+      if (res.data && res.data.content) {
+        setMessages([...newMessages, { role: 'model', content: res.data.content }]);
+      }
+    } catch (err) {
+      console.error('AI Chat Error Details:', err.response || err);
+      const errorMsg = err.response?.status === 404 
+        ? "AI Service not found. Please ensure the backend server is running and updated."
+        : "The AI Assistant is having trouble connecting. Please check your internet or API key.";
+      setMessages([...newMessages, { role: 'model', content: `Error: ${errorMsg}` }]);
+    } finally {
+      setIsTyping(false);
+    }
+
+  };
+
+  const generateReport = async () => {
+    let fullReport = "LifeGift AI Health Screening Transcript:\n\n";
+    messages.forEach(m => {
+      const speaker = m.role === 'model' ? 'AI Assistant' : 'Donor';
+      fullReport += `[${speaker}]: ${m.content}\n\n`;
+    });
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/donor/save-ai-report', {
+        title: `AI Screening - ${new Date().toLocaleDateString()}`,
+        content: fullReport.trim()
+      }, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      alert('Health report generated and saved to your vault!');
+      if (onReportSaved) onReportSaved(res.data.reports);
+    } catch (err) {
+      alert('Failed to save report.');
+    }
+  };
+
+  return (
+    <div className="bento-item col-span-4 flex flex-col h-[400px]">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="bg-red-500/10 p-2 rounded-xl text-red-500"><Activity size={18} /></div>
+        <h3 className="text-lg font-bold text-white">AI Health Assistant</h3>
+      </div>
+      
+      <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar mb-4">
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[80%] p-3 rounded-2xl text-sm leading-relaxed ${
+              m.role === 'user' ? 'bg-red-500 text-white' : 'bg-white/5 text-gray-300 border border-white/10'
+            }`}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {isTyping && <div className="text-[12px] text-gray-500 animate-pulse italic">Gemini is thinking...</div>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <input 
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder="Talk to AI..."
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-red-500"
+          />
+          <button onClick={sendMessage} className="p-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors">
+            <ChevronRight size={18} />
+          </button>
+        </div>
+        <button 
+          onClick={generateReport}
+          className="w-full py-2 bg-white/5 border border-white/10 rounded-xl text-[10px] font-bold text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2"
+        >
+          <Award size={14} className="text-red-500" /> Save This Analysis as Report
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const ReportsVault = ({ reports }) => {
+  const downloadPDF = async (report) => {
+    const doc = new jsPDF();
+    doc.setFontSize(22);
+    doc.text('LifeGift AI Health Report', 20, 30);
+    doc.setFontSize(12);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${new Date(report.date).toLocaleString()}`, 20, 40);
+    doc.line(20, 45, 190, 45);
+    
+    doc.setFontSize(16);
+    doc.setTextColor(0);
+    doc.text(report.title, 20, 55);
+    
+    doc.setFontSize(11);
+    const splitText = doc.splitTextToSize(report.content, 170);
+    doc.text(splitText, 20, 65);
+    
+    doc.save(`LifeGift_Report_${new Date(report.date).getTime()}.pdf`);
+  };
+
+  return (
+    <div className="bento-item col-span-8">
+      <div className="flex items-center justify-between mb-6">
+        <h3 className="text-lg font-bold text-white">AI Medical Vault</h3>
+        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Encrypted & Secure</span>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {reports && reports.length > 0 ? reports.map((r, i) => (
+          <div key={i} className="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between group hover:border-red-500/30 transition-all">
+            <div>
+              <p className="text-sm font-bold text-white">{r.title}</p>
+              <p className="text-[10px] text-gray-500">{new Date(r.date).toLocaleDateString()}</p>
+            </div>
+            <button 
+              onClick={() => downloadPDF(r)}
+              className="p-2 bg-white/5 rounded-xl text-gray-400 group-hover:text-red-500 group-hover:bg-red-500/10 transition-all"
+            >
+              <Droplets size={16} />
+            </button>
+          </div>
+        )) : (
+          <div className="col-span-2 py-10 text-center text-gray-500 text-xs italic">
+            No reports in vault yet. Chat with Gemini to generate your first health assessment.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 
 // --- Main Component ---
 
 const DonorDashboard = () => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hospitals, setHospitals] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -420,21 +880,40 @@ const DonorDashboard = () => {
             <>
               {/* Row 1: Profile + Health Graph */}
               <IdentityCard profile={profile} />
-              <HealthDashboard vitals={profile?.vitalsHistory} />
+              <HealthDashboard 
+                vitals={profile?.vitalsHistory} 
+                prescriptions={profile?.prescriptions || []}
+                onUploadSuccess={(newPrescriptions) => setProfile({...profile, prescriptions: newPrescriptions})}
+              />
               
-              {/* Row 2: Impact + Finder + Actions */}
+              {/* Row 2: Impact + AI Assistant + Hospital Finder */}
               <ImpactTimeline donations={profile?.donationHistory} />
-              <HospitalFinder profile={profile} />
+              <AIAssistant 
+                profile={profile} 
+                onReportSaved={(newReports) => setProfile({...profile, aiReports: newReports})} 
+              />
+              <HospitalFinder profile={profile} hospitals={hospitals} setHospitals={setHospitals} />
+
+              {/* Row 3: Reports Vault + Quick Actions */}
+              <ReportsVault reports={profile?.aiReports} />
               
               <div className="bento-item col-span-4 bg-gradient-to-br from-red-600 to-red-900 text-white flex flex-col justify-between border-none">
                 <div>
                   <h3 className="text-xl font-bold">Ready to Save Lives?</h3>
                   <p className="text-white/80 text-sm mt-2">Schedule your next donation at a certified center near you.</p>
                 </div>
-                <button className="bg-white/10 backdrop-blur-md text-white border border-white/20 font-bold py-3 rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-white/20 transition-colors mt-6">
+                <button 
+                  onClick={() => {
+                    document.getElementById('booking-section')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="bg-white/10 backdrop-blur-md text-white border border-white/20 font-bold py-3 rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-white/20 transition-colors mt-6"
+                >
                   Book Appointment <ChevronRight size={16} />
                 </button>
               </div>
+
+              {/* Row 4: Appointment Booking */}
+              <AppointmentBooking hospitals={hospitals} />
             </>
           ) : (
             <div className="col-span-12 py-20 text-center text-white">

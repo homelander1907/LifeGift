@@ -36,8 +36,8 @@ const Navbar = () => {
           <Link to="/#about" className="nav-link">About</Link>
           <Link to="/#process" className="nav-link">How it Works</Link>
           <Link to="/#impact" className="nav-link">Impact</Link>
-          <button className="btn-secondary" onClick={() => window.location.href='/login'}>Login</button>
-          <button className="btn-primary" onClick={() => window.location.href='/login'}>Register as Donor</button>
+          <button className="btn-secondary" onClick={() => window.location.href = '/login'}>Login</button>
+          <button className="btn-primary" onClick={() => window.location.href = '/login'}>Register</button>
         </div>
 
         <button className="mobile-toggle" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
@@ -56,8 +56,8 @@ const Navbar = () => {
           <Link to="/#process" className="nav-link" onClick={() => setMobileMenuOpen(false)}>How it Works</Link>
           <Link to="/#impact" className="nav-link" onClick={() => setMobileMenuOpen(false)}>Impact</Link>
           <div className="mobile-actions">
-            <button className="btn-secondary w-full" onClick={() => window.location.href='/login'}>Login</button>
-            <button className="btn-primary w-full" onClick={() => window.location.href='/login'}>Register as Donor</button>
+            <button className="btn-secondary w-full" onClick={() => window.location.href = '/login'}>Login</button>
+            <button className="btn-primary w-full" onClick={() => window.location.href = '/login'}>Register</button>
           </div>
         </motion.div>
       )}

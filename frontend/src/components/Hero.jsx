@@ -9,11 +9,11 @@ const AnimatedSphere = () => {
   return (
     <Float speed={2} rotationIntensity={2} floatIntensity={2}>
       <Sphere args={[1, 64, 64]} scale={2.5}>
-        <MeshDistortMaterial 
-          color="#ff3366" 
-          attach="material" 
-          distort={0.4} 
-          speed={1.5} 
+        <MeshDistortMaterial
+          color="#ff3366"
+          attach="material"
+          distort={0.4}
+          speed={1.5}
           roughness={0.2}
           metalness={0.8}
         />
@@ -26,11 +26,11 @@ const BlueSphere = () => {
   return (
     <Float speed={1.5} rotationIntensity={1} floatIntensity={3}>
       <Sphere args={[1, 64, 64]} scale={1.5} position={[-4, -2, -2]}>
-        <MeshDistortMaterial 
-          color="#00e5ff" 
-          attach="material" 
-          distort={0.3} 
-          speed={2} 
+        <MeshDistortMaterial
+          color="#00e5ff"
+          attach="material"
+          distort={0.3}
+          speed={2}
           roughness={0.1}
           metalness={0.9}
         />
@@ -52,9 +52,9 @@ const Hero = () => {
           <BlueSphere />
         </Canvas>
       </div>
-      
+
       <div className="container hero-content">
-        <motion.div 
+        <motion.div
           className="hero-text"
           initial={{ opacity: 0, x: -50 }}
           animate={{ opacity: 1, x: 0 }}
@@ -69,10 +69,10 @@ const Hero = () => {
             <span className="text-gradient-red">Life</span> & <span className="text-gradient-blue">Hope</span>
           </h1>
           <p className="hero-description">
-            Join the government authorized national registry for blood and organ donation. 
+            Join the government authorized national registry for blood and organ donation.
             One decision can save up to 8 lives and enhance 75 more. Your legacy starts here.
           </p>
-          
+
           <div className="hero-actions">
             <button className="btn-primary btn-large">
               Become a Donor <ArrowRight size={20} />
@@ -81,19 +81,19 @@ const Hero = () => {
               Request Resources
             </button>
           </div>
-          
+
           <div className="hero-stats">
             <div className="stat-item glass-panel">
               <Users className="stat-icon text-gradient-blue" />
               <div>
-                <h4>2.4M+</h4>
+                <h4>10+</h4>
                 <p>Registered Donors</p>
               </div>
             </div>
             <div className="stat-item glass-panel">
               <Activity className="stat-icon text-gradient-red" />
               <div>
-                <h4>15k+</h4>
+                <h4>15+</h4>
                 <p>Lives Saved Yearly</p>
               </div>
             </div>

@@ -63,10 +63,21 @@ const donorProfileSchema = new mongoose.Schema({
       required: true,
     },
   },
+  aiReports: [{
+    content: String,
+    title: { type: String, default: 'AI Health Assessment' },
+    date: { type: Date, default: Date.now }
+  }],
   address: {
     type: String,
-  }
+  },
+  prescriptions: [{
+    name: String,
+    fileData: String, // Base64 encoded PDF string
+    date: { type: Date, default: Date.now }
+  }]
 }, { timestamps: true });
+
 
 donorProfileSchema.index({ location: '2dsphere' });
 
