@@ -398,6 +398,89 @@ const AIAssistant = ({ profile, onReportSaved }) => {
   );
 };
 
+const BloodAvailabilityChecker = () => {
+  const [bloodGroup, setBloodGroup] = useState('');
+  const [statusMessage, setStatusMessage] = useState(null);
+  const [isAvailable, setIsAvailable] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const checkAvailability = async (e) => {
+    e.preventDefault();
+    if (!bloodGroup) {
+      setStatusMessage("Please select a blood group.");
+      setIsAvailable(false);
+      return;
+    }
+    setChecking(true);
+    setStatusMessage(null);
+    try {
+      const res = await axios.get(`http://localhost:5000/api/recipient/check-blood/${encodeURIComponent(bloodGroup)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      setIsAvailable(res.data.available);
+      if (res.data.available) {
+        setStatusMessage("Yes, this blood group is available in our stock.");
+      } else {
+        setStatusMessage("Sorry, this blood group is currently not available.");
+      }
+    } catch (err) {
+      console.error(err);
+      setStatusMessage("Error checking availability. Please try again.");
+      setIsAvailable(false);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="bento-item col-span-4 mt-6 border border-white/10 bg-white/5 p-8 rounded-3xl flex flex-col justify-between">
+      <div>
+        <div className="flex items-center gap-3 mb-6">
+          <div className="bg-red-500/10 p-3 rounded-2xl text-red-500 border border-red-500/20">
+            <Droplets size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">Check Blood Stock</h3>
+            <p className="text-xs text-gray-400">Find real-time availability</p>
+          </div>
+        </div>
+
+        <form onSubmit={checkAvailability} className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-semibold text-gray-400">Select Blood Group</label>
+            <select 
+              value={bloodGroup}
+              onChange={(e) => setBloodGroup(e.target.value)}
+              className="w-full border border-white/10 text-white rounded-2xl px-5 py-4 focus:outline-none focus:border-red-500 font-medium"
+              style={{ backgroundColor: '#121a28', color: '#ffffff' }}
+            >
+              <option value="" style={{ backgroundColor: '#121a28', color: '#ffffff' }}>-- Choose --</option>
+              {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bg => (
+                <option key={bg} value={bg} style={{ backgroundColor: '#121a28', color: '#ffffff' }}>{bg}</option>
+              ))}
+            </select>
+          </div>
+
+          <button 
+            type="submit" 
+            disabled={checking}
+            className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl transition-all shadow-lg shadow-red-500/20 disabled:opacity-50"
+          >
+            {checking ? 'Checking...' : 'Check Availability'}
+          </button>
+        </form>
+      </div>
+
+      {statusMessage && (
+        <div className={`mt-6 p-4 rounded-2xl border flex items-center gap-3 ${isAvailable ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-orange-500/10 border-orange-500/20 text-orange-400'}`}>
+          {isAvailable ? <CheckCircle2 size={24} className="shrink-0" /> : <AlertTriangle size={24} className="shrink-0" />}
+          <p className="text-sm font-semibold">{statusMessage}</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AppointmentBooking = ({ hospitals }) => {
   const [selectedHospital, setSelectedHospital] = useState('');
   const [date, setDate] = useState('');
@@ -447,7 +530,7 @@ const AppointmentBooking = ({ hospitals }) => {
   };
 
   return (
-    <div className="bento-item col-span-12 mt-6 border border-white/10 bg-white/5 p-8 rounded-3xl">
+    <div className="bento-item col-span-8 mt-6 border border-white/10 bg-white/5 p-8 rounded-3xl">
       <div className="flex items-center gap-3 mb-6">
         <div className="bg-blue-500/10 p-3 rounded-2xl text-blue-500 border border-blue-500/20">
           <Clock size={24} />
@@ -611,7 +694,8 @@ const RecipientDashboard = () => {
               <HospitalFinder profile={profile} hospitals={hospitals} setHospitals={setHospitals} />
               <AIAssistant profile={profile} />
 
-              {/* Row 3: Appointment Booking */}
+              {/* Row 3: Blood Availability Checker & Appointment Booking */}
+              <BloodAvailabilityChecker />
               <AppointmentBooking hospitals={hospitals} />
             </>
           ) : (
