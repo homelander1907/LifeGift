@@ -63,10 +63,6 @@ Three distinct portals, each with its own dashboard and permissions:
 - Per-blood-group inventory shown for each facility
 - "You are here" location indicator
 
-### 🚑 Live Cargo Tracker
-- Ambulance unit AMB-07 with live ETA countdown
-- Cold chain temperature monitoring (optimal range ≤ 6°C)
-- Delivery progress bar with auto-increment simulation
 
 ### 🎨 Dark UI / Animated Background
 - Pure black base (`#050507`) with deep crimson accents
